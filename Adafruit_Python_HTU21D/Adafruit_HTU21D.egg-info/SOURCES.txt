@@ -1,0 +1,10 @@
+setup.py
+Adafruit_HTU21D/HTU21D.py
+Adafruit_HTU21D/__init__.py
+Adafruit_HTU21D.egg-info/PKG-INFO
+Adafruit_HTU21D.egg-info/SOURCES.txt
+Adafruit_HTU21D.egg-info/dependency_links.txt
+Adafruit_HTU21D.egg-info/top_level.txt
+examples/HTU21D.py
+examples/__init__.py
+examples/simpletest.py
