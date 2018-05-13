@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 import time
 import asyncio
 from websocket import create_connection
@@ -79,7 +80,7 @@ async def display():
         await asyncio.sleep(0.5)
         
 async def console():
-    print("Start Display")
+    print("Start Console")
     while True:
         #print ( time.strftime('%H:%M:%S'),pct,temp1,temp2,humi,"{:7.4f} V".format(ch0), "{:7.4f} V".format(ch1), "{:7.4f} V".format(ch2), "{:7.4f} V".format(ch3), )
         await asyncio.sleep(1)
