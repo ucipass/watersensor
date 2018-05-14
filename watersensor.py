@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 import time
 import asyncio
+import os
+from datetime import datetime
 from websocket import create_connection
 import Adafruit_ADS1x15
 import Adafruit_HTU21D.HTU21D as HTU21D
@@ -18,6 +20,8 @@ ch0 = None
 ch1 = None
 ch2 = None
 ch3 = None
+lastpush = datetime.now()
+shutdown = False
 
 def gpiosetup():
     GPIO.setmode(GPIO.BCM)
@@ -26,11 +30,38 @@ def gpiosetup():
     for gpio in gpio_in_low: GPIO.setup(gpio, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
     gpio_in_high = (5,6)
     for gpio in gpio_in_high: GPIO.setup(gpio, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-    def gpiocb5(pin):
-            global menucounter
-            menucounter = (menucounter + 1) % 6
-            #print("PIN5 Counter", menucounter )
-    GPIO.add_event_detect(5, GPIO.BOTH, callback=gpiocb5, bouncetime=300)  
+    def gpioupcb5(pin):
+        global menucounter
+        global lastpush
+        lastpush = datetime.now()
+        menucounter = (menucounter + 1) % 6
+        #print("PIN5 Counter", menucounter )
+    GPIO.add_event_detect(5, GPIO.BOTH,  callback=gpioupcb5, bouncetime=300)  
+
+
+
+async def shutdown_detect():
+    global lastpush
+    global shutdown
+    while True:
+        diff = (datetime.now() - lastpush).total_seconds()
+        if not GPIO.input(5) and diff > 1:
+            print("Shutdown begin in 3 seconds!",datetime.now())
+            for i in (3,2,1):
+                await asyncio.sleep(1)
+                diff = (datetime.now() - lastpush).total_seconds()
+                if GPIO.input(5):
+                    print("Shutdown CANCELLED!")
+                    break
+                if diff > 4:
+                    shutdown = True
+                    print("SHUTDOWN STARTING!")
+                    await asyncio.sleep(1)
+                    os.system("shutdown now");
+                    exit();
+        else:
+            #print("No Shutdown detected...",datetime.now())
+            await asyncio.sleep(1)
 
 
 
@@ -62,6 +93,9 @@ async def display():
         disp.display()
     
     while True:
+        if shutdown:
+            oled("SHUTDOWN\n"+str(datetime.now()), font16)
+            break
         if menucounter == 0 and ch0 !=None and ch1 !=None:
             pct = 'Water Level\n{0:0.2f} %'.format((ch0*100)/ch1)
             oled(pct, font16)
@@ -146,6 +180,6 @@ async def wssend():
 print('Reading ADS1x15 AND HTU21D values, press Ctrl-C to quit...')
 gpiosetup()
 loop = asyncio.get_event_loop()
-loop.run_until_complete(asyncio.gather(wssend(),console(),display(),sensor_ad(),sensor_temp()))
+loop.run_until_complete(asyncio.gather( shutdown_detect(), wssend(),console(),display(),sensor_ad(),sensor_temp()))
 loop.close()
 
