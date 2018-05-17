@@ -25,11 +25,14 @@ shutdown = False
 
 def gpiosetup():
     GPIO.setmode(GPIO.BCM)
-    #GPIO.cleanup()
-    gpio_in_low = (4,17,27,22,13,19,26,  18,23,24,25,12,16,20,21)
-    for gpio in gpio_in_low: GPIO.setup(gpio, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-    gpio_in_high = (5,6)
-    for gpio in gpio_in_high: GPIO.setup(gpio, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    gpio_in_low = (17,27,22,13,19,26,18,23,24,25,12,16,20,21)
+    for gpio in gpio_in_low:
+        GPIO.setup(gpio, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+    gpio_in_high = (4,5)
+    for gpio in gpio_in_high:
+        GPIO.setup(gpio, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    GPIO.setup(6, GPIO.OUT)
+    GPIO.output(6, 0)
     def gpioupcb5(pin):
         global menucounter
         global lastpush
@@ -64,7 +67,6 @@ async def shutdown_detect():
             await asyncio.sleep(1)
 
 
-
 async def display():
     global menucounter
     print("Start Display")
@@ -91,17 +93,18 @@ async def display():
             lineNumber += 1
         disp.image(image)
         disp.display()
-    
+
     while True:
+        #print(menucounter)
         if shutdown:
             oled("SHUTDOWN\n"+str(datetime.now()), font16)
             break
-        if menucounter == 0 and ch0 !=None and ch1 !=None:
-            pct = 'Water Level\n{0:0.2f} %'.format((ch0*100)/ch1)
+        if menucounter == 0 and ch0 !=None and ch2 != None:
+            pct = 'Water Level\n{0:0.2f} %'.format((ch2*100)/ch0)
             oled(pct, font16)
-        if menucounter == 1 and tempc !=None and tempf !=None and humi !=None:
-            temp_humi = "Temp: "+'{0:0.1f}F'.format(tempf)+"\nHumid: "+'{0:0.1f}%'.format(humi)
-            oled(temp_humi, font16)
+        if menucounter == 1 and ch0 !=None and ch1 !=None:
+            pct = 'Threshold\n{0:0.2f} %'.format((ch1*100)/ch0)
+            oled(pct, font16)
         if menucounter == 2:
             oled("CH0 Voltage:\n"+'{0:0.4f} V'.format(ch0), font16)
         if menucounter == 3:
@@ -109,10 +112,10 @@ async def display():
         if menucounter == 4:
             oled("CH2 Voltage:\n"+'{0:0.4f} V'.format(ch2), font16)
         if menucounter == 5:
-            oled("CH3 Voltage:\n"+'{0:0.4f} V'.format(ch3), font16)
+            oled('{0:0.4f} V\n'.format(ch0) + '{0:0.4f} V\n'.format(ch1) +'{0:0.4f} V\n'.format(ch2) +'{0:0.4f} V'.format(ch3), font)
         #oled(temp_humi,font16)
         await asyncio.sleep(0.5)
-        
+
 async def console():
     print("Start Console")
     while True:
@@ -127,7 +130,7 @@ async def sensor_ad():
     global ch3
     print("Start A/D Sensor")
     adc = Adafruit_ADS1x15.ADS1115()
-    GAIN = 1
+    GAIN = 2/3
     VMULTI = (0.125/GAIN)/1000
     while True:
         try:
@@ -135,9 +138,14 @@ async def sensor_ad():
             ch1 = adc.read_adc(1, gain=GAIN) * VMULTI
             ch2 = adc.read_adc(2, gain=GAIN) * VMULTI
             ch3 = adc.read_adc(3, gain=GAIN) * VMULTI
-            #print("A/D Success")
+            if ch2 > ch1:
+                GPIO.output(6,1)
+            else:
+                GPIO.output(6,0)
+#            else:
+#	        GPIO.output(6,1)
         except Exception as e:
-            print("Analog Digital Sensor read error",e)
+            print(datetime.now(),"ADS1115 READ ERROR:",e)
         await asyncio.sleep(1)
 
 async def sensor_temp():
@@ -170,16 +178,24 @@ async def wssend():
             if ch0 == None or ch1 == None:
                 print("Nothing to send")
             else:
-                pct = (ch0/ch1)*100
+                pct = (ch2/ch0)*100
                 ws.send(str(pct))
                 result =  ws.recv()
         except Exception as e:
             print("websocket send failed",e)
         await asyncio.sleep(5)
 
-print('Reading ADS1x15 AND HTU21D values, press Ctrl-C to quit...')
-gpiosetup()
-loop = asyncio.get_event_loop()
-loop.run_until_complete(asyncio.gather( shutdown_detect(), wssend(),console(),display(),sensor_ad(),sensor_temp()))
-loop.close()
+
+try:
+	print('Reading ADS1x15 AND HTU21D values, press Ctrl-C to quit...')
+	gpiosetup()
+	loop = asyncio.get_event_loop()
+	loop.run_until_complete(asyncio.gather( shutdown_detect(), wssend(),console(),display(),sensor_ad()))
+	loop.close()
+except KeyboardInterrupt:
+	print("Keyboard Interrupt")
+except Exception as e:
+	print("Other error",e)
+finally:
+	GPIO.cleanup()
 
