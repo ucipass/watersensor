@@ -37,7 +37,7 @@ def gpiosetup():
         global menucounter
         global lastpush
         lastpush = datetime.now()
-        menucounter = (menucounter + 1) % 6
+        menucounter = (menucounter + 1) % 3
         #print("PIN5 Counter", menucounter )
     GPIO.add_event_detect(5, GPIO.BOTH,  callback=gpioupcb5, bouncetime=300)  
 
@@ -95,31 +95,36 @@ async def display():
         disp.display()
 
     while True:
+        await asyncio.sleep(0.5)
+        water = (ch2*100)/ch3
+        thresh = (ch1*100)/ch3
         #print(menucounter)
         if shutdown:
             oled("SHUTDOWN\n"+str(datetime.now()), font16)
             break
         if menucounter == 0 and ch0 !=None and ch2 != None:
-            pct = 'Water Level\n{0:0.2f} %'.format((ch2*100)/ch0)
+            pct = 'Water Level\n{0:0.2f} %'.format(water)
             oled(pct, font16)
         if menucounter == 1 and ch0 !=None and ch1 !=None:
-            pct = 'Threshold\n{0:0.2f} %'.format((ch1*100)/ch0)
+            pct = 'Threshold\n{0:0.2f} %'.format(thresh)
             oled(pct, font16)
         if menucounter == 2:
-            oled("CH0 Voltage:\n"+'{0:0.4f} V'.format(ch0), font16)
-        if menucounter == 3:
-            oled("CH1 Voltage:\n"+'{0:0.4f} V'.format(ch1), font16)
-        if menucounter == 4:
-            oled("CH2 Voltage:\n"+'{0:0.4f} V'.format(ch2), font16)
-        if menucounter == 5:
             oled('{0:0.4f} V\n'.format(ch0) + '{0:0.4f} V\n'.format(ch1) +'{0:0.4f} V\n'.format(ch2) +'{0:0.4f} V'.format(ch3), font)
         #oled(temp_humi,font16)
         await asyncio.sleep(0.5)
 
 async def console():
+    global ch0
+    global ch1
+    global ch2
+    global ch3
     print("Start Console")
     while True:
         #print ( time.strftime('%H:%M:%S'),pct,temp1,temp2,humi,"{:7.4f} V".format(ch0), "{:7.4f} V".format(ch1), "{:7.4f} V".format(ch2), "{:7.4f} V".format(ch3), )
+        if ch0 == None or ch1 == None or ch2 == None or ch3 == None:
+            print("No values yet")
+        else:
+            print ( time.strftime('%H:%M:%S'),"{:7.4f} V".format(ch0), "{:7.4f} V".format(ch1), "{:7.4f} V".format(ch2), "{:7.4f} V".format(ch3) )
         await asyncio.sleep(1)
 
 
@@ -130,7 +135,7 @@ async def sensor_ad():
     global ch3
     print("Start A/D Sensor")
     adc = Adafruit_ADS1x15.ADS1115()
-    GAIN = 2/3
+    GAIN = 1
     VMULTI = (0.125/GAIN)/1000
     while True:
         try:
@@ -190,7 +195,8 @@ try:
 	print('Reading ADS1x15 AND HTU21D values, press Ctrl-C to quit...')
 	gpiosetup()
 	loop = asyncio.get_event_loop()
-	loop.run_until_complete(asyncio.gather( shutdown_detect(), wssend(),console(),display(),sensor_ad()))
+	#loop.run_until_complete(asyncio.gather( shutdown_detect(), wssend(),console(),display(),sensor_ad()))
+	loop.run_until_complete(asyncio.gather( sensor_ad(), shutdown_detect(),  display(), console(), wssend()  ))
 	loop.close()
 except KeyboardInterrupt:
 	print("Keyboard Interrupt")
