@@ -11,6 +11,12 @@ import Adafruit_SSD1306
 from PIL import Image
 from PIL import ImageDraw
 from PIL import ImageFont
+import requests
+from time import sleep
+from random import uniform
+from time import gmtime, strftime
+
+url = "http://172.18.100.8:3000/charts"
 
 menucounter = 0
 tempf = None
@@ -22,6 +28,8 @@ ch2 = None
 ch3 = None
 lastpush = datetime.now()
 shutdown = False
+lastpumpon = datetime.now()
+lastpumppct = 0
 
 def gpiosetup():
     GPIO.setmode(GPIO.BCM)
@@ -39,8 +47,7 @@ def gpiosetup():
         lastpush = datetime.now()
         menucounter = (menucounter + 1) % 3
         #print("PIN5 Counter", menucounter )
-    GPIO.add_event_detect(5, GPIO.BOTH,  callback=gpioupcb5, bouncetime=300)  
-
+    GPIO.add_event_detect(5, GPIO.BOTH,  callback=gpioupcb5, bouncetime=300)
 
 
 async def shutdown_detect():
@@ -124,7 +131,8 @@ async def console():
         if ch0 == None or ch1 == None or ch2 == None or ch3 == None:
             print("No values yet")
         else:
-            print ( time.strftime('%H:%M:%S'),"{:7.4f} V".format(ch0), "{:7.4f} V".format(ch1), "{:7.4f} V".format(ch2), "{:7.4f} V".format(ch3) )
+            pass
+            #print ( time.strftime('%H:%M:%S'),"{:7.4f} V".format(ch0), "{:7.4f} V".format(ch1), "{:7.4f} V".format(ch2), "{:7.4f} V".format(ch3) )
         await asyncio.sleep(1)
 
 
@@ -183,20 +191,68 @@ async def wssend():
             if ch0 == None or ch1 == None:
                 print("Nothing to send")
             else:
-                pct = (ch2/ch0)*100
+                pct = (ch2/ch3)*100
                 ws.send(str(pct))
                 result =  ws.recv()
         except Exception as e:
             print("websocket send failed",e)
         await asyncio.sleep(5)
 
+async def post():
+  global lastpumpon
+  global lastpumppct
+  while True:
+    if ch0 == None or ch1 == None:
+      print("Nothing to send")
+    else:
+      pct = round((ch2/ch3)*100, 4)
+      diff = round( ( (datetime.now() - lastpumpon).total_seconds() ) /60 )
+      try:
+        data =	{
+            "data":
+            {
+                "id":"test",
+                "type":"charts",
+                "attributes":{
+                    "cmd":"log",
+                    "data": str(pct),
+                    "logname":"pump-level"
+                }
+            }
+        }
+        timedata =	{
+            "data":
+            {
+                "id":"test",
+                "type":"charts",
+                "attributes":{
+                    "cmd":"log",
+                    "data": str(diff),
+                    "logname":"pump-time"
+                }
+            }
+        }
+        print("WATER LEVEL:",pct,"PUMP OFF FOR",diff,"MINUTES! TIME:",strftime("%Y-%m-%d %H:%M:%S", gmtime()))
+        r = requests.post( url, json = data)
+        #print("Response",r)
+        #print("Time",diff, "change",pct,lastpumppct)
+        if pct*1.03 < lastpumppct and (datetime.now() - lastpumpon).total_seconds() > 60:
+          lastpumpon = datetime.now()
+          print("==============PUMP ON AFTER",diff,"MINUTES!==================")
+          r = requests.post( url, json = timedata)
+          #print("Response",r)
+        lastpumppct = pct
+      except Exception as e:
+        print("Post Failure", strftime("%Y-%m-%d %H:%M:%S", gmtime()), e )
+    await asyncio.sleep(10)
+
 
 try:
 	print('Reading ADS1x15 AND HTU21D values, press Ctrl-C to quit...')
 	gpiosetup()
 	loop = asyncio.get_event_loop()
-	#loop.run_until_complete(asyncio.gather( shutdown_detect(), wssend(),console(),display(),sensor_ad()))
-	loop.run_until_complete(asyncio.gather( sensor_ad(), shutdown_detect(),  display(), console(), wssend()  ))
+	loop.run_until_complete(asyncio.gather( shutdown_detect(), console(), display(), sensor_ad(), post()   ))
+	#loop.run_until_complete(asyncio.gather( sensor_ad(), shutdown_detect(),  display(), console(), wssend()  ))
 	loop.close()
 except KeyboardInterrupt:
 	print("Keyboard Interrupt")
