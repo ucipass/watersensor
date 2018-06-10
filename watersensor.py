@@ -16,7 +16,7 @@ from time import sleep
 from random import uniform
 from time import gmtime, strftime
 
-url = "http://172.18.100.8:3000/charts"
+url = "http://127.0.0.1:3000/charts"
 
 menucounter = 0
 tempf = None
@@ -30,6 +30,7 @@ lastpush = datetime.now()
 shutdown = False
 lastpumpon = datetime.now()
 lastpumppct = 0
+isFirstPump = True
 
 def gpiosetup():
     GPIO.setmode(GPIO.BCM)
@@ -201,6 +202,7 @@ async def wssend():
 async def post():
   global lastpumpon
   global lastpumppct
+  global isFirstPump
   while True:
     if ch0 == None or ch1 == None:
       print("Nothing to send")
@@ -236,7 +238,10 @@ async def post():
         r = requests.post( url, json = data)
         #print("Response",r)
         #print("Time",diff, "change",pct,lastpumppct)
-        if pct*1.03 < lastpumppct and (datetime.now() - lastpumpon).total_seconds() > 60:
+        if pct*1.03 < lastpumppct and isFirstPump:
+          lastpumpon = datetime.now()
+          isFirstPump = False
+        if pct*1.03 < lastpumppct and not isFirstPump and (datetime.now() - lastpumpon).total_seconds() > 60:
           lastpumpon = datetime.now()
           print("==============PUMP ON AFTER",diff,"MINUTES!==================")
           r = requests.post( url, json = timedata)
